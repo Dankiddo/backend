@@ -12,6 +12,9 @@ dist/
 
 # Testing
 coverage/
+# Vitest snapshots
+__snapshots__/
+*.snap
 
 # Logs
 *.log

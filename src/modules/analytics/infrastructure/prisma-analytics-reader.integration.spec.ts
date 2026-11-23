@@ -124,6 +124,105 @@ describe.skipIf(!dbAvailable)('Prisma analytics reader (integration)', () => {
     expect(rogueRow).toBeUndefined();
   });
 
+  it('getGmvByToken with a window includes only releases in [from, to)', async () => {
+    const inWindow = await seedDelivery();
+    const beforeWindow = await seedDelivery();
+    const afterWindow = await seedDelivery();
+
+    const from = new Date('2026-01-01T00:00:00Z');
+    const to = new Date('2026-02-01T00:00:00Z');
+    const oneDay = 24 * 60 * 60 * 1000;
+
+    const token = `WINDOW-${inWindow}`;
+    await prisma.escrow.create({
+      data: {
+        chainDeliveryId: inWindow,
+        senderAddress: Keypair.random().publicKey(),
+        recipientAddress: Keypair.random().publicKey(),
+        driverAddress: Keypair.random().publicKey(),
+        token,
+        amount: '100',
+        status: 'RELEASED',
+        isVerified: true,
+        releasedAt: new Date(from.getTime() + oneDay),
+        createdAtChain: new Date(),
+      },
+    });
+    await prisma.escrow.create({
+      data: {
+        chainDeliveryId: beforeWindow,
+        senderAddress: Keypair.random().publicKey(),
+        recipientAddress: Keypair.random().publicKey(),
+        driverAddress: Keypair.random().publicKey(),
+        token,
+        amount: '100',
+        status: 'RELEASED',
+        isVerified: true,
+        releasedAt: new Date(from.getTime() - oneDay),
+        createdAtChain: new Date(),
+      },
+    });
+    await prisma.escrow.create({
+      data: {
+        chainDeliveryId: afterWindow,
+        senderAddress: Keypair.random().publicKey(),
+        recipientAddress: Keypair.random().publicKey(),
+        driverAddress: Keypair.random().publicKey(),
+        token,
+        amount: '100',
+        status: 'RELEASED',
+        isVerified: true,
+        releasedAt: to,
+        createdAtChain: new Date(),
+      },
+    });
+
+    const rows = await analyticsReader.getGmvByToken({ from, to });
+    const row = rows.find((r) => r.token === token);
+    expect(row).toMatchObject({ releasedCount: 1, releasedAmount: 100n });
+  });
+
+  it('getGmvByToken groups independently per token within a window', async () => {
+    const first = await seedDelivery();
+    const second = await seedDelivery();
+    const from = new Date('2026-01-01T00:00:00Z');
+    const to = new Date('2026-02-01T00:00:00Z');
+
+    await prisma.escrow.create({
+      data: {
+        chainDeliveryId: first,
+        senderAddress: Keypair.random().publicKey(),
+        recipientAddress: Keypair.random().publicKey(),
+        driverAddress: Keypair.random().publicKey(),
+        token: 'TOKEN-A',
+        amount: '100',
+        status: 'RELEASED',
+        isVerified: true,
+        releasedAt: new Date(from.getTime() + 1000),
+        createdAtChain: new Date(),
+      },
+    });
+    await prisma.escrow.create({
+      data: {
+        chainDeliveryId: second,
+        senderAddress: Keypair.random().publicKey(),
+        recipientAddress: Keypair.random().publicKey(),
+        driverAddress: Keypair.random().publicKey(),
+        token: 'TOKEN-B',
+        amount: '200',
+        status: 'RELEASED',
+        isVerified: true,
+        releasedAt: new Date(from.getTime() + 2000),
+        createdAtChain: new Date(),
+      },
+    });
+
+    const rows = await analyticsReader.getGmvByToken({ from, to });
+    const byToken = Object.fromEntries(rows.map((r) => [r.token, r]));
+    expect(byToken['TOKEN-A'].releasedAmount).toBe(100n);
+    expect(byToken['TOKEN-B'].releasedAmount).toBe(200n);
+  });
+
   it('getDeliveryFunnelCounts counts total/delivered from deliveries and disputed from disputes', async () => {
     const before = await analyticsReader.getDeliveryFunnelCounts();
 

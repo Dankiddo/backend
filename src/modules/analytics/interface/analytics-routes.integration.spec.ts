@@ -82,7 +82,6 @@ describe.skipIf(!dbAvailable)('analytics routes (integration)', () => {
     });
     expect(gmv.statusCode).toBe(200);
     expect(Array.isArray(gmv.json<SuccessBody<unknown[]>>().data)).toBe(true);
-
     const completion = await app.inject({
       method: 'GET',
       url: '/api/v1/analytics/completion-rate',
@@ -110,5 +109,44 @@ describe.skipIf(!dbAvailable)('analytics routes (integration)', () => {
     });
     expect(tiers.statusCode).toBe(200);
     expect(tiers.json<SuccessBody<{ total: number }>>().data).toHaveProperty('total');
+  });
+
+  it('rejects an invalid from timestamp on the GMV endpoint', async () => {
+    const accessToken = await registerAndLogin('ADMIN');
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/analytics/gmv?from=not-a-date',
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json<ErrorBody>().error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('rejects from >= to on the GMV endpoint', async () => {
+    const accessToken = await registerAndLogin('ADMIN');
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/analytics/gmv?from=2026-02-01T00:00:00.000Z&to=2026-01-01T00:00:00.000Z',
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json<ErrorBody>().error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('serves an all-time GMV result when no window is supplied', async () => {
+    const accessToken = await registerAndLogin('ADMIN');
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/analytics/gmv',
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(Array.isArray(response.json<SuccessBody<unknown[]>>().data)).toBe(true);
   });
 });

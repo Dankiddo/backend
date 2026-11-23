@@ -10,10 +10,21 @@ import type { AnalyticsReader } from '../domain/index.js';
  */
 export function createPrismaAnalyticsReader(prisma: PrismaClient): AnalyticsReader {
   return {
-    async getGmvByToken() {
+    async getGmvByToken(filter) {
+      const where: Record<string, unknown> = {
+        status: 'RELEASED',
+        isVerified: true,
+      };
+      if (filter?.from || filter?.to) {
+        where.releasedAt = {
+          ...(filter.from && { gte: filter.from }),
+          ...(filter.to && { lt: filter.to }),
+        };
+      }
+
       const grouped = await prisma.escrow.groupBy({
         by: ['token'],
-        where: { status: 'RELEASED', isVerified: true },
+        where,
         _sum: { amount: true },
         _count: { _all: true },
       });

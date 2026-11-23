@@ -10,6 +10,23 @@ export const gmvResponseSchema = z.object({
   ),
 });
 
+export const gmvQuerySchema = z
+  .object({
+    /** Inclusive lower bound on the escrow release timestamp (UTC ISO-8601). */
+    from: z.string().datetime().optional(),
+    /** Exclusive upper bound on the escrow release timestamp (UTC ISO-8601). */
+    to: z.string().datetime().optional(),
+  })
+  .refine(
+    (data) => {
+      if (data.from && data.to) {
+        return new Date(data.from).getTime() < new Date(data.to).getTime();
+      }
+      return true;
+    },
+    { message: 'from must be before to', path: ['to'] },
+  );
+
 export const completionRateResponseSchema = z.object({
   data: z.object({
     totalDeliveries: z.number().int(),

@@ -11,6 +11,7 @@ import {
   completionRateResponseSchema,
   disputeRateResponseSchema,
   driverTierDistributionResponseSchema,
+  gmvQuerySchema,
   gmvResponseSchema,
 } from './schemas.js';
 
@@ -51,11 +52,16 @@ export function createAnalyticsRoutes(useCases: AnalyticsUseCases): FastifyPlugi
         schema: {
           security: [{ bearerAuth: [] }],
           description: 'Requires ADMIN role.',
+          querystring: gmvQuerySchema,
           response: { 200: gmvResponseSchema },
         },
       },
-      async (_request, reply) => {
-        const rows = await useCases.getGmv();
+      async (request, reply) => {
+        const { from, to } = request.query;
+        const rows = await useCases.getGmv({
+          ...(from !== undefined && { from: new Date(from) }),
+          ...(to !== undefined && { to: new Date(to) }),
+        });
         void reply
           .header('Cache-Control', cacheControlHeader)
           .status(200)

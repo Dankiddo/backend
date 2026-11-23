@@ -16,7 +16,12 @@ import type { DeliveryFunnelCounts, DriverTierCounts, GmvByToken } from './entit
  * imports remain subject to the architecture boundary rules.
  */
 export interface AnalyticsReader {
-  getGmvByToken(): Promise<GmvByToken[]>;
+  getGmvByToken(filter?: {
+    /** Inclusive lower bound on `escrows.released_at` (UTC). */
+    from?: Date;
+    /** Exclusive upper bound on `escrows.released_at` (UTC). */
+    to?: Date;
+  }): Promise<GmvByToken[]>;
   getDeliveryFunnelCounts(): Promise<DeliveryFunnelCounts>;
   getDriverTierCounts(): Promise<DriverTierCounts>;
 }

@@ -2,9 +2,12 @@ import type { AnalyticsReader, GmvByToken } from '../domain/index.js';
 import type { AnalyticsCache } from './analytics-cache.js';
 
 const CACHE_KEY_PREFIX = 'analytics:v1:';
-const GMV_KEY = `${CACHE_KEY_PREFIX}gmv-by-token`;
 const FUNNEL_KEY = `${CACHE_KEY_PREFIX}delivery-funnel-counts`;
 const TIER_KEY = `${CACHE_KEY_PREFIX}driver-tier-counts`;
+
+function gmvKey(from?: Date, to?: Date): string {
+  return `${CACHE_KEY_PREFIX}gmv-by-token:${from?.toISOString() ?? 'null'}:${to?.toISOString() ?? 'null'}`;
+}
 
 /** `GmvByToken.releasedAmount` is a `bigint` — `JSON.stringify` throws on
  * `bigint` by default, so it's round-tripped through a string explicitly
@@ -27,19 +30,20 @@ export function createCachedAnalyticsReader(
   ttlSeconds: number,
 ): AnalyticsReader {
   return {
-    async getGmvByToken() {
-      const cached = await cache.get(GMV_KEY);
+    async getGmvByToken(filter) {
+      const key = gmvKey(filter?.from, filter?.to);
+      const cached = await cache.get(key);
       if (cached) {
         const rows = JSON.parse(cached) as CachedGmvByToken[];
         return rows.map((row) => ({ ...row, releasedAmount: BigInt(row.releasedAmount) }));
       }
 
-      const rows = await reader.getGmvByToken();
+      const rows = await reader.getGmvByToken(filter);
       const serializable: CachedGmvByToken[] = rows.map((row) => ({
         ...row,
         releasedAmount: row.releasedAmount.toString(),
       }));
-      await cache.set(GMV_KEY, JSON.stringify(serializable), ttlSeconds);
+      await cache.set(key, JSON.stringify(serializable), ttlSeconds);
       return rows;
     },
 

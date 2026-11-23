@@ -1,4 +1,4 @@
-export { createGetGmvUseCase, type GetGmvDeps } from './get-gmv.js';
+export { createGetGmvUseCase, type GetGmvDeps, type GetGmvInput } from './get-gmv.js';
 export {
   createGetCompletionRateUseCase,
   type GetCompletionRateDeps,

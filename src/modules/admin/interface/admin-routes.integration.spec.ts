@@ -248,4 +248,73 @@ describe.skipIf(!dbAvailable)('admin routes (integration)', () => {
       ),
     ).toBe(true);
   });
+
+  it('rejects an invalid raisedAfter timestamp on the disputes endpoint', async () => {
+    const { accessToken } = await registerAndLogin('ADMIN');
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/admin/disputes?raisedAfter=not-a-date',
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json<ErrorBody>().error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('rejects an inverted raisedAfter/raisedBefore range on the disputes endpoint', async () => {
+    const { accessToken } = await registerAndLogin('ADMIN');
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/admin/disputes?raisedAfter=2026-02-01T00:00:00.000Z&raisedBefore=2026-01-01T00:00:00.000Z',
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json<ErrorBody>().error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('returns only open disputes matching the raisedBy filter', async () => {
+    const { accessToken } = await registerAndLogin('ADMIN');
+    const prisma = getPrismaClient();
+    const authHeader = { authorization: `Bearer ${accessToken}` };
+
+    const chainDeliveryId =
+      BigInt(Date.now()) * 1_000_000n + BigInt(Math.floor(Math.random() * 1e6));
+    createdChainIds.push(chainDeliveryId);
+    await prisma.delivery.create({
+      data: {
+        chainDeliveryId,
+        senderAddress: Keypair.random().publicKey(),
+        recipientAddress: Keypair.random().publicKey(),
+        status: 'DISPUTED',
+        origin: 'Lagos',
+        destination: 'Accra',
+        cargoCategory: 'GENERAL',
+        weightGrams: 500,
+        fragile: false,
+        createdAtChain: new Date(),
+      },
+    });
+    await prisma.dispute.create({
+      data: { chainDeliveryId, status: 'OPEN', raisedBy: 'TARGET-RAISER', raisedAt: new Date() },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/admin/disputes?raisedBy=TARGET-RAISER',
+      headers: authHeader,
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json<
+      SuccessBody<Array<{ chainDeliveryId: string; raisedBy: string }>>
+    >();
+    expect(
+      body.data.some(
+        (d) => d.chainDeliveryId === chainDeliveryId.toString() && d.raisedBy === 'TARGET-RAISER',
+      ),
+    ).toBe(true);
+  });
 });

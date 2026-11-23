@@ -132,4 +132,96 @@ describe.skipIf(!dbAvailable)('Prisma dispute review reader (integration)', () =
 
     expect(results.map((result) => result.chainDeliveryId)).toEqual([second, third]);
   });
+
+  it('filters open disputes by raisedBy', async () => {
+    const graiserOne = await seedDelivery();
+    const graiserTwo = await seedDelivery();
+    const graiserThree = await seedDelivery();
+
+    await prisma.dispute.create({
+      data: { chainDeliveryId: graiserOne, status: 'OPEN', raisedBy: 'GRAISER-A', raisedAt: new Date('2026-01-01T00:00:00Z') },
+    });
+    await prisma.dispute.create({
+      data: { chainDeliveryId: graiserTwo, status: 'OPEN', raisedBy: 'GRAISER-B', raisedAt: new Date('2026-01-02T00:00:00Z') },
+    });
+    await prisma.dispute.create({
+      data: { chainDeliveryId: graiserThree, status: 'OPEN', raisedBy: 'GRAISER-A', raisedAt: new Date('2026-01-03T00:00:00Z') },
+    });
+
+    const results = await disputeReviewReader.listOpenDisputes({
+      limit: 100,
+      raisedBy: 'GRAISER-A',
+    });
+
+    const relevant = results.filter((r) => createdChainIds.includes(r.chainDeliveryId));
+    expect(relevant).toHaveLength(2);
+    expect(relevant.every((r) => r.raisedBy === 'GRAISER-A')).toBe(true);
+  });
+
+  it('filters open disputes by raisedAfter inclusive and raisedBefore exclusive', async () => {
+    const earlier = await seedDelivery();
+    const middle = await seedDelivery();
+    const later = await seedDelivery();
+
+    const raisedAt = new Date('2026-06-01T00:00:00Z');
+    const oneDay = 24 * 60 * 60 * 1000;
+    await prisma.dispute.create({
+      data: { chainDeliveryId: earlier, status: 'OPEN', raisedBy: 'GRAISER-A', raisedAt: new Date(raisedAt.getTime() - oneDay) },
+    });
+    await prisma.dispute.create({
+      data: { chainDeliveryId: middle, status: 'OPEN', raisedBy: 'GRAISER-A', raisedAt: raisedAt },
+    });
+    await prisma.dispute.create({
+      data: { chainDeliveryId: later, status: 'OPEN', raisedBy: 'GRAISER-A', raisedAt: new Date(raisedAt.getTime() + oneDay) },
+    });
+
+    const results = await disputeReviewReader.listOpenDisputes({
+      limit: 100,
+      raisedAfter: raisedAt,
+      raisedBefore: new Date(raisedAt.getTime() + oneDay),
+    });
+
+    const relevant = results.filter((r) => createdChainIds.includes(r.chainDeliveryId));
+    expect(relevant).toHaveLength(1);
+    expect(relevant[0]!.chainDeliveryId).toBe(middle);
+  });
+
+  it('applies raisedBy and time filters together with cursor pagination', async () => {
+    const ids: bigint[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      ids.push(await seedDelivery());
+    }
+    const raisedAt = new Date('2026-01-01T00:00:00Z');
+    for (const chainDeliveryId of ids) {
+      await prisma.dispute.create({
+        data: { chainDeliveryId, status: 'OPEN', raisedBy: 'GRAISER-A', raisedAt },
+      });
+    }
+
+    const page1 = await disputeReviewReader.listOpenDisputes({
+      limit: 1,
+      raisedBy: 'GRAISER-A',
+      raisedAfter: raisedAt,
+    });
+    expect(page1).toHaveLength(1);
+    expect(page1[0]!.chainDeliveryId).toBe(ids[0]);
+
+    const page2 = await disputeReviewReader.listOpenDisputes({
+      limit: 1,
+      after: { raisedAt, chainDeliveryId: ids[0] },
+      raisedBy: 'GRAISER-A',
+      raisedAfter: raisedAt,
+    });
+    expect(page2).toHaveLength(1);
+    expect(page2[0]!.chainDeliveryId).toBe(ids[1]);
+
+    const page3 = await disputeReviewReader.listOpenDisputes({
+      limit: 1,
+      after: { raisedAt, chainDeliveryId: ids[1] },
+      raisedBy: 'GRAISER-A',
+      raisedAfter: raisedAt,
+    });
+    expect(page3).toHaveLength(1);
+    expect(page3[0]!.chainDeliveryId).toBe(ids[2]);
+  });
 });

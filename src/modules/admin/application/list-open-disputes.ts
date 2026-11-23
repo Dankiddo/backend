@@ -8,6 +8,12 @@ export interface ListOpenDisputesInput {
   limit?: number;
   /** ID cursor — the previous page's `nextCursor` (`raisedAt|chainDeliveryId`). */
   after?: string;
+  /** Exact match on the dispute's raiser (`disputes.raised_by`). */
+  raisedBy?: string;
+  /** Inclusive lower bound on `raisedAt` (UTC). */
+  raisedAfter?: Date;
+  /** Exclusive upper bound on `raisedAt` (UTC). */
+  raisedBefore?: Date;
 }
 
 export interface ListOpenDisputesResult {
@@ -49,6 +55,9 @@ export function createListOpenDisputesUseCase(deps: ListOpenDisputesDeps) {
     const page = await deps.disputeReviewReader.listOpenDisputes({
       limit,
       ...(input.after && { after: decodeCursor(input.after) }),
+      ...(input.raisedBy !== undefined && { raisedBy: input.raisedBy }),
+      ...(input.raisedAfter !== undefined && { raisedAfter: input.raisedAfter }),
+      ...(input.raisedBefore !== undefined && { raisedBefore: input.raisedBefore }),
     });
     const hasMore = page.length > limit;
     const items = page.slice(0, limit);

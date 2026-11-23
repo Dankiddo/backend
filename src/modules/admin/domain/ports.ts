@@ -14,7 +14,14 @@ import type { AdminUser, AuditLogEntry, DisputeReviewItem, UserRole } from './en
 export interface DisputeReviewReader {
   listOpenDisputes(filter: {
     limit: number;
+    /** Keyset cursor from the previous page (`raisedAt|chainDeliveryId`). */
     after?: { raisedAt: Date; chainDeliveryId: bigint };
+    /** Exact match on the dispute's raiser (`disputes.raised_by`). */
+    raisedBy?: string;
+    /** Inclusive lower bound on `disputes.raised_at` (UTC). */
+    raisedAfter?: Date;
+    /** Exclusive upper bound on `disputes.raised_at` (UTC). */
+    raisedBefore?: Date;
   }): Promise<DisputeReviewItem[]>;
 }
 

@@ -65,10 +65,13 @@ export function createAdminRoutes(useCases: AdminUseCases): FastifyPluginAsyncZo
         },
       },
       async (request, reply) => {
-        const { limit: requestedLimit, after } = request.query;
+        const { limit: requestedLimit, after, raisedBy, raisedAfter, raisedBefore } = request.query;
         const { items, nextCursor, limit } = await useCases.listOpenDisputes({
           ...(requestedLimit !== undefined && { limit: requestedLimit }),
           ...(after !== undefined && { after }),
+          ...(raisedBy !== undefined && { raisedBy }),
+          ...(raisedAfter !== undefined && { raisedAfter: new Date(raisedAfter) }),
+          ...(raisedBefore !== undefined && { raisedBefore: new Date(raisedBefore) }),
         });
         void reply.status(200).send(ok(items.map(serializeDispute), { limit, nextCursor }));
       },

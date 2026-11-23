@@ -26,7 +26,21 @@ const disputeCursor = z
 export const listOpenDisputesQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(200).optional(),
   after: disputeCursor.optional(),
-});
+  /** Exact match on the dispute's raiser (`disputes.raised_by`). */
+  raisedBy: z.string().min(1).optional(),
+  /** Inclusive lower bound on `disputes.raised_at` (UTC ISO-8601). */
+  raisedAfter: z.string().datetime().optional(),
+  /** Exclusive upper bound on `disputes.raised_at` (UTC ISO-8601). */
+  raisedBefore: z.string().datetime().optional(),
+}).refine(
+  (data) => {
+    if (data.raisedAfter && data.raisedBefore) {
+      return new Date(data.raisedAfter).getTime() < new Date(data.raisedBefore).getTime();
+    }
+    return true;
+  },
+  { message: 'raisedAfter must be before raisedBefore', path: ['raisedBefore'] },
+);
 export const listOpenDisputesResponseSchema = z.object({
   data: z.array(
     z.object({

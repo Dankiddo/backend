@@ -20,15 +20,27 @@ export function createFakeDisputeReviewReader(): DisputeReviewReader & {
       items = value;
     },
     async listOpenDisputes(filter) {
+      let matching = items.filter((item) => {
+        if (filter.raisedBy !== undefined && item.raisedBy !== filter.raisedBy) {
+          return false;
+        }
+        if (filter.raisedAfter !== undefined && item.raisedAt < filter.raisedAfter) {
+          return false;
+        }
+        if (filter.raisedBefore !== undefined && item.raisedAt >= filter.raisedBefore) {
+          return false;
+        }
+        return true;
+      });
       const after = filter.after;
-      const matching = after
-        ? items.filter(
-            (item) =>
-              item.raisedAt > after.raisedAt ||
-              (item.raisedAt.getTime() === after.raisedAt.getTime() &&
-                item.chainDeliveryId > after.chainDeliveryId),
-          )
-        : items;
+      if (after) {
+        matching = matching.filter(
+          (item) =>
+            item.raisedAt > after.raisedAt ||
+            (item.raisedAt.getTime() === after.raisedAt.getTime() &&
+              item.chainDeliveryId > after.chainDeliveryId),
+        );
+      }
       return matching
         .slice()
         .sort(

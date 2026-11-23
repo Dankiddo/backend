@@ -80,4 +80,138 @@ describe('listOpenDisputes', () => {
       'Invalid dispute cursor',
     );
   });
+
+  it('filters by raisedBy, returning only that raiser\'s open disputes', async () => {
+    const disputeReviewReader = createFakeDisputeReviewReader();
+    disputeReviewReader.seed([
+      buildDisputeReviewItem({ chainDeliveryId: 7n, raisedBy: 'GRAISER1' }),
+      buildDisputeReviewItem({ chainDeliveryId: 8n, raisedBy: 'GRAISER2' }),
+      buildDisputeReviewItem({ chainDeliveryId: 9n, raisedBy: 'GRAISER1' }),
+    ]);
+    const listOpenDisputes = createListOpenDisputesUseCase({ disputeReviewReader });
+
+    const result = await listOpenDisputes({ raisedBy: 'GRAISER1' });
+
+    expect(result.items).toHaveLength(2);
+    expect(result.items.map((i) => i.chainDeliveryId)).toEqual([7n, 9n]);
+    expect(result.items.every((i) => i.raisedBy === 'GRAISER1')).toBe(true);
+  });
+
+  it('filters by raisedAfter (inclusive) and raisedBefore (exclusive)', async () => {
+    const disputeReviewReader = createFakeDisputeReviewReader();
+    disputeReviewReader.seed([
+      buildDisputeReviewItem({
+        chainDeliveryId: 7n,
+        raisedAt: new Date('2026-01-01T00:00:00Z'),
+      }),
+      buildDisputeReviewItem({
+        chainDeliveryId: 8n,
+        raisedAt: new Date('2026-01-02T00:00:00Z'),
+      }),
+      buildDisputeReviewItem({
+        chainDeliveryId: 9n,
+        raisedAt: new Date('2026-01-03T00:00:00Z'),
+      }),
+    ]);
+    const listOpenDisputes = createListOpenDisputesUseCase({ disputeReviewReader });
+
+    const result = await listOpenDisputes({
+      raisedAfter: new Date('2026-01-01T00:00:00Z'),
+      raisedBefore: new Date('2026-01-03T00:00:00Z'),
+    });
+
+    expect(result.items).toHaveLength(2);
+    expect(result.items.map((i) => i.chainDeliveryId)).toEqual([7n, 8n]);
+  });
+
+  it('applies a from-only bound', async () => {
+    const disputeReviewReader = createFakeDisputeReviewReader();
+    disputeReviewReader.seed([
+      buildDisputeReviewItem({ chainDeliveryId: 7n, raisedAt: new Date('2026-01-01T00:00:00Z') }),
+      buildDisputeReviewItem({ chainDeliveryId: 8n, raisedAt: new Date('2026-01-02T00:00:00Z') }),
+    ]);
+    const listOpenDisputes = createListOpenDisputesUseCase({ disputeReviewReader });
+
+    const result = await listOpenDisputes({ raisedAfter: new Date('2026-01-02T00:00:00Z') });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]!.chainDeliveryId).toBe(8n);
+  });
+
+  it('applies a to-only bound', async () => {
+    const disputeReviewReader = createFakeDisputeReviewReader();
+    disputeReviewReader.seed([
+      buildDisputeReviewItem({ chainDeliveryId: 7n, raisedAt: new Date('2026-01-01T00:00:00Z') }),
+      buildDisputeReviewItem({ chainDeliveryId: 8n, raisedAt: new Date('2026-01-02T00:00:00Z') }),
+    ]);
+    const listOpenDisputes = createListOpenDisputesUseCase({ disputeReviewReader });
+
+    const result = await listOpenDisputes({ raisedBefore: new Date('2026-01-02T00:00:00Z') });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]!.chainDeliveryId).toBe(7n);
+  });
+
+  it('composes raisedBy and time filters with the cursor without duplicates', async () => {
+    const disputeReviewReader = createFakeDisputeReviewReader();
+    const base = new Date('2026-01-01T00:00:00Z');
+    disputeReviewReader.seed([
+      buildDisputeReviewItem({ chainDeliveryId: 7n, raisedBy: 'GRAISER1', raisedAt: base }),
+      buildDisputeReviewItem({
+        chainDeliveryId: 8n,
+        raisedBy: 'GRAISER1',
+        raisedAt: new Date('2026-01-01T00:00:01Z'),
+      }),
+      buildDisputeReviewItem({
+        chainDeliveryId: 9n,
+        raisedBy: 'GRAISER1',
+        raisedAt: new Date('2026-01-01T00:00:02Z'),
+      }),
+      buildDisputeReviewItem({ chainDeliveryId: 10n, raisedBy: 'GRAISER2', raisedAt: base }),
+    ]);
+    const listOpenDisputes = createListOpenDisputesUseCase({ disputeReviewReader });
+
+    const page1 = await listOpenDisputes({
+      limit: 1,
+      raisedBy: 'GRAISER1',
+      raisedAfter: base,
+    });
+    expect(page1.items).toHaveLength(1);
+    expect(page1.nextCursor).not.toBeNull();
+
+    const page2 = await listOpenDisputes({
+      limit: 1,
+      after: page1.nextCursor!,
+      raisedBy: 'GRAISER1',
+      raisedAfter: base,
+    });
+    expect(page2.items).toHaveLength(1);
+    expect(page2.nextCursor).not.toBeNull();
+
+    const page3 = await listOpenDisputes({
+      limit: 1,
+      after: page2.nextCursor!,
+      raisedBy: 'GRAISER1',
+      raisedAfter: base,
+    });
+    expect(page3.items).toHaveLength(1);
+    expect(page3.nextCursor).toBeNull();
+
+    const ids = [...page1.items, ...page2.items, ...page3.items].map((i) => i.chainDeliveryId);
+    expect(new Set(ids).size).toBe(3);
+    expect(ids).toEqual([7n, 8n, 9n]);
+  });
+
+  it('returns an empty page when no dispute matches the filters', async () => {
+    const disputeReviewReader = createFakeDisputeReviewReader();
+    disputeReviewReader.seed([
+      buildDisputeReviewItem({ chainDeliveryId: 7n, raisedBy: 'GRAISER1' }),
+    ]);
+    const listOpenDisputes = createListOpenDisputesUseCase({ disputeReviewReader });
+
+    const result = await listOpenDisputes({ raisedBy: 'GRAISER2' });
+
+    expect(result.items).toEqual([]);
+    expect(result.nextCursor).toBeNull();
+  });
 });
